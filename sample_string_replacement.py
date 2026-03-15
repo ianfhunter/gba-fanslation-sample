@@ -115,11 +115,24 @@ def main():
     with open("in_memory.gba", "wb") as f:
         f.write(rom_mut)
 
-    # Approach 2: Allocate Space at end of Rom and fix pointer
+    # Approach 2: Allocate in unallocated space at end of ROM (trailing 0xFF/0x00), then fix pointer
     GBA_ROM_BASE = 0x08000000
-    new_offset = len(rom)
     new_string_data = encoded_translation + b"\x00"  # terminator
-    rom_realloc = bytearray(rom) + new_string_data
+    needed = len(new_string_data)
+    # Search backwards from end for a run of unallocated bytes (0xFF or 0x00)
+    free_run_len = 0
+    for i in range(len(rom) - 1, -1, -1):
+        if rom[i] in (0xFF, 0x00):
+            free_run_len += 1
+        else:
+            break
+    if free_run_len < needed:
+        raise SystemExit(
+            f"Not enough unallocated space at end of ROM: need {needed} bytes, found {free_run_len} (0xFF/0x00 run)"
+        )
+    new_offset = len(rom) - free_run_len
+    rom_realloc = bytearray(rom)
+    rom_realloc[new_offset : new_offset + needed] = new_string_data
     old_ptr = (GBA_ROM_BASE + source_pointer).to_bytes(4, "little")
     new_ptr = (GBA_ROM_BASE + new_offset).to_bytes(4, "little")
     ptr_pos = 0
